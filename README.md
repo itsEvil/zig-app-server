@@ -9,5 +9,5 @@ Database: Redis 6.0+
 Zig
 
 ### Features
-No dependencies!
+No dependencies! <br/>
 Redis parser for Zig (Modified version of (okredis)[https://github.com/kristoff-it/zig-okredis] for Zig)
