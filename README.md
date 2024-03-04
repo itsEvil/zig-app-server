@@ -10,4 +10,4 @@ Zig
 
 ### Features
 No dependencies! <br/>
-Redis parser for Zig (Modified version of (okredis)[https://github.com/kristoff-it/zig-okredis] for Zig)
+Redis parser for Zig - Modified version of [ok redis](https://github.com/kristoff-it/zig-okredis) for Zig
