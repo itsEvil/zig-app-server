@@ -5,8 +5,8 @@ Made for fun but can be a replacement for 'Rotmg Pservers' app server
 ### Status : WIP
 
 ### Requirements
-Database: Redis 6.0+
-Zig
+Database: Redis 6.0+ <br/>
+Zig version 0.11.0
 
 ### Features
 No dependencies! <br/>
