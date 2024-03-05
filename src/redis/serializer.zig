@@ -1,5 +1,7 @@
 const std = @import("std");
 const traits = @import("./traits.zig");
+const logger = @import("../log.zig");
+const log = logger.get(.serializer);
 
 pub const CommandSerializer = struct {
     pub fn serializeCommand(msg: anytype, command: anytype) !void {
