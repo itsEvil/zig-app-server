@@ -21,10 +21,12 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
     try api.client.send(void, .{ "SETNX", "regLock", uuid_arr });
     const lock_result = try api.client.sendAlloc([]const u8, allocator, .{ "GET", "regLock" });
     log.debug("lock result: {s}", .{lock_result});
+    defer allocator.free(lock_result);
 
     if (!std.mem.eql(u8, uuid_arr, lock_result)) {
         log.err("lock uuid not the same!", .{});
-        try response_helper.writeError(response, "Failed Lock, Try again", allocator);
+        const buf = try response_helper.writeError(response, "Failed Lock, Try again", allocator);
+        defer allocator.free(buf);
         return validators.APIError.FailedLock;
     }
 
@@ -44,14 +46,16 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
     const email_exists = try api.client.send(i64, .{ "HEXISTS", "logins", email_upper });
     log.debug("Does email exist: {d}", .{email_exists});
     if (email_exists != 0) {
-        try response_helper.writeError(response, "Email taken", allocator);
+        const buf = try response_helper.writeError(response, "Email taken", allocator);
+        defer allocator.free(buf);
         return validators.APIError.EmailTaken;
     }
 
     const name_exists = try api.client.send(i64, .{ "HEXISTS", "names", username_upper });
     log.debug("Does name exist: {d}", .{name_exists});
     if (name_exists != 0) {
-        try response_helper.writeError(response, "Name taken", allocator);
+        const buf = try response_helper.writeError(response, "Name taken", allocator);
+        defer allocator.free(buf);
         return validators.APIError.NameTaken;
     }
 
@@ -62,6 +66,7 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
     log.debug("Next account Id: {d}", .{next_acc_id});
 
     const account_field = try std.fmt.allocPrint(allocator, "account.{d}", .{next_acc_id});
+    defer allocator.free(account_field);
 
     const newAccount = handler.AccountStruct{
         .email = credentials.email,

@@ -129,7 +129,8 @@ fn sendErrorPage(response: *http.Server.Response, allocator: std.mem.Allocator) 
         try response.do();
 
     if (response.request.method != .HEAD) {
-        try response_helper.writeError(response, "Not found", allocator);
+        const buf = try response_helper.writeError(response, "Not found", allocator);
+        defer allocator.free(buf);
     }
 }
 

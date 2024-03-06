@@ -12,5 +12,6 @@ const helper = @import("../utils/response_helper.zig");
 
 pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, creds: handler.Credentials) !void {
     log.debug("handle::{s}::{s}", .{ creds.email, creds.password });
-    try helper.writeError(response, "Not implemented", allocator);
+    const buf = try helper.writeError(response, "Not implemented", allocator);
+    defer allocator.free(buf);
 }

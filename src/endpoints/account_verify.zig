@@ -10,6 +10,7 @@ const log = logger.get(.acc_verify);
 const api = @import("../api.zig");
 const helper = @import("../utils/response_helper.zig");
 const json = @import("../utils/json.zig");
+const rParser = @import("../redis/parser.zig").RESP3Parser;
 
 pub const SlotCost = 1000;
 pub const SlotCurrency = 1; //0 gold, 1 fame, 2 guild fame
@@ -22,6 +23,7 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
     const email_upper = std.ascii.upperString(email_buf, creds.email);
 
     const email_reply = try api.client.sendAlloc([]const u8, allocator, .{ "HGET", "logins", email_upper });
+
     log.debug("Reply: {s}", .{email_reply});
 
     const json_obj = try json.parse(email_reply, allocator);
@@ -38,18 +40,21 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
     defer allocator.free(hashed_pass);
 
     if (!std.mem.eql(u8, hashed_pass, hash)) {
-        try helper.writeError(response, "Invalid Credentials", allocator);
+        const buf = try helper.writeError(response, "Invalid Credentials", allocator);
+        defer allocator.free(buf);
         return validators.APIError.InvalidCredentials;
     }
-
     const account_field = try validators.getAccountField(accId, allocator);
     const account_reply = api.client.sendAlloc([][]const u8, allocator, .{ "HGETALL", account_field }) catch |err| {
         log.err("senderror:{any}", .{err});
         return err;
     };
+    defer allocator.free(account_field);
+    defer allocator.free(account_reply);
 
     const account = try handler.AccountStruct.parse(account_reply);
     const xml = try account.toXml(accId, allocator);
+    defer allocator.free(xml);
     log.debug("xml: {s}", .{xml});
     try helper.writeXML(response, xml);
 }

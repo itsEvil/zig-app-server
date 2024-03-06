@@ -30,7 +30,8 @@ pub fn parseEndpoint(response: *http.Server.Response, allocator: std.mem.Allocat
         try response.do();
 
         if (response.request.method != .POST) {
-            try response_helper.writeError(response, "Bad request method", allocator);
+            const buf = try response_helper.writeError(response, "Bad request method", allocator);
+            defer allocator.free(buf);
             return;
         }
 
@@ -47,28 +48,33 @@ pub fn parseEndpoint(response: *http.Server.Response, allocator: std.mem.Allocat
 pub fn validateLogin(response: *http.Server.Response, creds: Credentials, allocator: std.mem.Allocator, check_username: bool) !void {
     //validate basic user inputs
     if (creds.email.len == 0 or creds.password.len == 0) {
-        try response_helper.writeError(response, "Missing data", allocator);
+        const buf = try response_helper.writeError(response, "Missing data", allocator);
+        defer allocator.free(buf);
         return validators.APIError.MissingData;
     }
 
     if (!try validators.isValidEmail(creds.email)) {
-        try response_helper.writeError(response, "Invalid Email", allocator);
+        const buf = try response_helper.writeError(response, "Invalid Email", allocator);
+        defer allocator.free(buf);
         return validators.APIError.InvalidEmail;
     }
 
     if (!validators.isValidPassword(creds.password)) {
-        try response_helper.writeError(response, "Invalid Password", allocator);
+        const buf = try response_helper.writeError(response, "Invalid Password", allocator);
+        defer allocator.free(buf);
         return validators.APIError.InvalidPassword;
     }
 
     if (check_username) {
         if (creds.username.len == 0) {
-            try response_helper.writeError(response, "Missing data", allocator);
+            const buf = try response_helper.writeError(response, "Missing data", allocator);
+            defer allocator.free(buf);
             return validators.APIError.MissingData;
         }
 
         if (!validators.isValidUsername(creds.username)) {
-            try response_helper.writeError(response, "Invalid Username", allocator);
+            const buf = try response_helper.writeError(response, "Invalid Username", allocator);
+            defer allocator.free(buf);
             return validators.APIError.InvalidUsername;
         }
     }
@@ -141,6 +147,8 @@ pub const AccountStruct = struct {
         const id_data = try xml.addXml("AccountId", "{d}", acc_id, allocator);
         const name_data = try xml.addXml("Name", "{s}", self.name, allocator);
 
+        defer allocator.free(id_data);
+        defer allocator.free(name_data);
         return try std.fmt.allocPrint(allocator, "<Account>{s}{s}</Account>", .{ id_data, name_data }); //closing
     }
 

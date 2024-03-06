@@ -16,7 +16,7 @@ pub const DoubleParser = struct {
         // TODO: write real implementation
         var buf: [100]u8 = undefined;
         var end: usize = 0;
-        for (buf) |*elem| {
+        for (&buf) |*elem| {
             const ch = try msg.readByte();
             elem.* = ch;
             end += 1;
