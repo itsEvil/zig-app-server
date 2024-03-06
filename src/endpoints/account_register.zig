@@ -4,17 +4,12 @@ const redis = @import("../redis/client.zig");
 const http = std.http;
 const handler = @import("handler.zig");
 const response_helper = @import("../utils/response_helper.zig");
-
 const UUID = @import("../utils/uuid.zig").UUID;
 const logger = @import("../log.zig");
 const log = logger.get(.acc_register);
-
-const Base64Encoder = std.base64.standard.Encoder;
+const json = @import("../utils/json.zig");
 
 const api = @import("../api.zig");
-
-const rand = std.crypto.random;
-const sha512 = std.crypto.hash.sha3.Sha3_512;
 
 pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, credentials: handler.Credentials) !void {
     const uuid = UUID.init();
@@ -60,9 +55,6 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
         return validators.APIError.NameTaken;
     }
 
-    //const email_set_result = try api.client.send(i64, .{ "HSET", "logins", email_upper, "{}" });
-    //log.debug("Did we set email: {d}", .{email_set_result});
-
     const name_set_result = try api.client.send(i64, .{ "HSET", "names", username_upper, email_upper });
     log.debug("Did we set username: {d}", .{name_set_result});
 
@@ -71,7 +63,7 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
 
     const account_field = try std.fmt.allocPrint(allocator, "account.{d}", .{next_acc_id});
 
-    const newAccount = AccountStruct{
+    const newAccount = handler.AccountStruct{
         .email = credentials.email,
         .name = credentials.username,
     };
@@ -92,65 +84,20 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
         "passResetToken", newAccount.passResetToken,
     };
 
-    const salt_buf: []u8 = try allocator.alloc(u8, 20);
-    defer allocator.free(salt_buf);
-    std.crypto.random.bytes(salt_buf);
-    const base64_len = GetLength(salt_buf.len);
-    const base64_buf: []u8 = try allocator.alloc(u8, base64_len);
-    defer allocator.free(base64_buf);
+    const login_info = try validators.generateLoginInfo(credentials, allocator, next_acc_id);
+    defer allocator.free(login_info.salt);
+    defer allocator.free(login_info.hash);
 
-    const salt = Base64Encode(salt_buf, base64_buf);
-    const salted_pass = try std.fmt.allocPrint(allocator, "{s}{s}", .{ credentials.password, salt });
-
-    var hash_buf: [sha512.digest_length]u8 = undefined;
-    sha512.hash(salted_pass, &hash_buf, .{});
-    const hash_base64_len = GetLength(hash_buf.len);
-    const hash_base64_buf: []u8 = try allocator.alloc(u8, hash_base64_len);
-    const hash = Base64Encode(&hash_buf, hash_base64_buf);
-    defer allocator.free(hash_base64_buf);
-
-    log.info("salt:{s} salted:{s}, hash:{s}", .{ salt, salted_pass, hash });
-
-    const login_info = LoginInfo{ .salt = salt, .hash = @constCast(hash), .accountId = next_acc_id };
     const account_result = try api.client.send(i64, command);
     log.debug("account result: {d}", .{account_result});
 
-    var string = std.ArrayList(u8).init(allocator);
-    try std.json.stringify(login_info, .{}, string.writer());
-    log.debug("json item: '{s}'", .{string.items});
-    const login_info_result = try api.client.send(i64, .{ "HSET", "logins", email_upper, string.items });
+    const login_arr_list = try json.toString(login_info, allocator);
+    const login_json = login_arr_list.items;
+    log.debug("login info json: '{s}'", .{login_json});
+    defer login_arr_list.deinit();
+
+    const login_info_result = try api.client.send(i64, .{ "HSET", "logins", email_upper, login_json });
     log.debug("login info result: {d}", .{login_info_result});
 
     try response_helper.writeSuccess(response);
-}
-
-//Default values for new accounts
-const AccountStruct = struct {
-    email: []const u8,
-    name: []const u8,
-    rank: i32 = 0,
-    guildId: i32 = 0,
-    guildRank: i32 = 0,
-    vaultCount: i32 = 2,
-    maxCharSlots: i32 = 2,
-    regTime: i64 = 0,
-    fame: i32 = 0,
-    totalFame: i32 = 0,
-    credits: i32 = 0,
-    totalCredits: i32 = 0,
-    passResetToken: []const u8 = "",
-};
-
-const LoginInfo = struct {
-    salt: []const u8,
-    hash: []u8,
-    accountId: i64,
-};
-
-fn GetLength(length: usize) usize {
-    return Base64Encoder.calcSize(length);
-}
-
-fn Base64Encode(buf: []const u8, out_buf: []u8) []const u8 {
-    return Base64Encoder.encode(out_buf, buf);
 }

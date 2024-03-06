@@ -1,9 +1,12 @@
 const std = @import("std");
 const net = std.net;
 const Response = std.http.Server.Response;
-
+const endpoint = @import("../endpoints/handler.zig");
 const logger = @import("../log.zig");
 const log = logger.get(.validators);
+const Base64Encoder = std.base64.standard.Encoder;
+const rand = std.crypto.random;
+const sha512 = std.crypto.hash.sha3.Sha3_512;
 
 const Alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 pub const APIError = error{
@@ -95,3 +98,37 @@ pub fn isValidUsername(username: []const u8) bool {
 
     return true;
 }
+
+fn GetLength(length: usize) usize {
+    return Base64Encoder.calcSize(length);
+}
+
+fn Base64Encode(buf: []const u8, out_buf: []u8) []const u8 {
+    return Base64Encoder.encode(out_buf, buf);
+}
+
+pub fn generateLoginInfo(creds: endpoint.Credentials, allocator: std.mem.Allocator, acc_id: i64) !endpoint.LoginInfo {
+    const salt_buf: []u8 = try allocator.alloc(u8, 20);
+    defer allocator.free(salt_buf);
+    std.crypto.random.bytes(salt_buf);
+    const base64_len = GetLength(salt_buf.len);
+    const base64_buf: []u8 = try allocator.alloc(u8, base64_len);
+    //defer allocator.free(base64_buf);
+
+    const salt = Base64Encode(salt_buf, base64_buf);
+    const salted_pass = try std.fmt.allocPrint(allocator, "{s}{s}", .{ creds.password, salt });
+    defer allocator.free(salted_pass);
+
+    var hash_buf: [sha512.digest_length]u8 = undefined;
+    sha512.hash(salted_pass, &hash_buf, .{});
+    const hash_base64_len = GetLength(hash_buf.len);
+    const hash_base64_buf: []u8 = try allocator.alloc(u8, hash_base64_len);
+    const hash = Base64Encode(&hash_buf, hash_base64_buf);
+    //defer allocator.free(hash_base64_buf);
+
+    log.info("salt:{s} salted:{s}, hash:{s}", .{ salt, salted_pass, hash });
+
+    return endpoint.LoginInfo{ .salt = salt, .hash = hash, .accountId = acc_id };
+}
+
+pub fn getLoginInfo(_: endpoint.Credentials, _: std.mem.Allocator) !endpoint.LoginInfo {}

@@ -113,3 +113,26 @@ pub const Credentials = struct {
     password: []const u8,
     username: []const u8 = "",
 };
+
+pub const LoginInfo = struct {
+    salt: []const u8,
+    hash: []const u8,
+    accountId: i64 = -1,
+};
+
+//Default values for new accounts
+pub const AccountStruct = struct {
+    email: []const u8,
+    name: []const u8,
+    rank: i32 = 0,
+    guildId: i32 = 0,
+    guildRank: i32 = 0,
+    vaultCount: i32 = 2,
+    maxCharSlots: i32 = 2,
+    regTime: i64 = 0,
+    fame: i32 = 0,
+    totalFame: i32 = 0,
+    credits: i32 = 0,
+    totalCredits: i32 = 0,
+    passResetToken: []const u8 = "",
+};
