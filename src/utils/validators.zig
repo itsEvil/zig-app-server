@@ -11,6 +11,7 @@ const sha512 = std.crypto.hash.sha3.Sha3_512;
 const Alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 pub const APIError = error{
     FormTooLarge,
+    InvalidCredentials,
     InvalidEmail,
     InvalidUsername,
     InvalidPassword,
@@ -107,6 +108,7 @@ fn Base64Encode(buf: []const u8, out_buf: []u8) []const u8 {
     return Base64Encoder.encode(out_buf, buf);
 }
 
+///Free LoginInfo.Salt and LoginInfo.Hash afterwards
 pub fn generateLoginInfo(creds: endpoint.Credentials, allocator: std.mem.Allocator, acc_id: i64) !endpoint.LoginInfo {
     const salt_buf: []u8 = try allocator.alloc(u8, 20);
     defer allocator.free(salt_buf);
@@ -116,19 +118,27 @@ pub fn generateLoginInfo(creds: endpoint.Credentials, allocator: std.mem.Allocat
     //defer allocator.free(base64_buf);
 
     const salt = Base64Encode(salt_buf, base64_buf);
-    const salted_pass = try std.fmt.allocPrint(allocator, "{s}{s}", .{ creds.password, salt });
-    defer allocator.free(salted_pass);
-
-    var hash_buf: [sha512.digest_length]u8 = undefined;
-    sha512.hash(salted_pass, &hash_buf, .{});
-    const hash_base64_len = GetLength(hash_buf.len);
-    const hash_base64_buf: []u8 = try allocator.alloc(u8, hash_base64_len);
-    const hash = Base64Encode(&hash_buf, hash_base64_buf);
-    //defer allocator.free(hash_base64_buf);
+    const salted_pass = try combineStrings(creds.password, salt, allocator);
+    const hash = try generateHash(salted_pass, allocator);
 
     log.info("salt:{s} salted:{s}, hash:{s}", .{ salt, salted_pass, hash });
 
     return endpoint.LoginInfo{ .salt = salt, .hash = hash, .accountId = acc_id };
 }
 
-pub fn getLoginInfo(_: endpoint.Credentials, _: std.mem.Allocator) !endpoint.LoginInfo {}
+pub fn combineStrings(left: []const u8, right: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    return try std.fmt.allocPrint(allocator, "{s}{s}", .{ left, right });
+}
+
+pub fn getAccountField(accId: i64, allocator: std.mem.Allocator) ![]u8 {
+    return try std.fmt.allocPrint(allocator, "account.{d}", .{accId});
+}
+
+///Free arr afterwards
+pub fn generateHash(salt: []u8, allocator: std.mem.Allocator) ![]const u8 {
+    var hash_buf: [sha512.digest_length]u8 = undefined;
+    sha512.hash(salt, &hash_buf, .{});
+    const hash_base64_len = GetLength(hash_buf.len);
+    const hash_base64_buf: []u8 = try allocator.alloc(u8, hash_base64_len);
+    return Base64Encode(&hash_buf, hash_base64_buf);
+}

@@ -6,6 +6,7 @@ const char_list = @import("char_list.zig");
 const response_helper = @import("../utils/response_helper.zig");
 const validators = @import("../utils/validators.zig");
 const http = std.http;
+const xml = @import("../utils/xml.zig");
 
 const logger = @import("../log.zig");
 const log = logger.get(.endpoint_handler);
@@ -124,15 +125,65 @@ pub const LoginInfo = struct {
 pub const AccountStruct = struct {
     email: []const u8,
     name: []const u8,
-    rank: i32 = 0,
-    guildId: i32 = 0,
-    guildRank: i32 = 0,
-    vaultCount: i32 = 2,
-    maxCharSlots: i32 = 2,
+    rank: i64 = 0,
+    guildId: i64 = 0,
+    guildRank: i64 = 0,
+    vaultCount: i64 = 2,
+    maxCharSlots: i64 = 2,
     regTime: i64 = 0,
-    fame: i32 = 0,
-    totalFame: i32 = 0,
-    credits: i32 = 0,
-    totalCredits: i32 = 0,
+    fame: i64 = 0,
+    totalFame: i64 = 0,
+    credits: i64 = 0,
+    totalCredits: i64 = 0,
     passResetToken: []const u8 = "",
+
+    pub fn toXml(self: AccountStruct, acc_id: i64, allocator: std.mem.Allocator) ![]u8 {
+        const id_data = try xml.addXml("AccountId", "{d}", acc_id, allocator);
+        const name_data = try xml.addXml("Name", "{s}", self.name, allocator);
+
+        return try std.fmt.allocPrint(allocator, "<Account>{s}{s}</Account>", .{ id_data, name_data }); //closing
+    }
+
+    pub fn parse(data: [][]const u8) !AccountStruct {
+        var email: []const u8 = "";
+        var name: []const u8 = "";
+        var rank: i64 = 0;
+        var guildId: i64 = 0;
+        var vaultcount: i64 = 0;
+        var maxCharSlot: i64 = 0;
+        var regTime: i64 = 0;
+        var fame: i64 = 0;
+        var totalFame: i64 = 0;
+        var credits: i64 = 0;
+        var totalCredits: i64 = 0;
+        const eql = std.mem.eql;
+        const int = std.fmt.parseInt;
+        for (0.., data) |i, word| {
+            if (eql(u8, "email", word)) {
+                email = data[i + 1];
+            } else if (eql(u8, "name", word)) {
+                name = data[i + 1];
+            } else if (eql(u8, "rank", word)) {
+                rank = try int(i64, data[i + 1], 10);
+            } else if (eql(u8, "guildId", word)) {
+                guildId = try int(i64, data[i + 1], 10);
+            } else if (eql(u8, "vaultCount", word)) {
+                vaultcount = try int(i64, data[i + 1], 10);
+            } else if (eql(u8, "maxCharSlot", word)) {
+                maxCharSlot = try int(i64, data[i + 1], 10);
+            } else if (eql(u8, "regTime", word)) {
+                regTime = try int(i64, data[i + 1], 10);
+            } else if (eql(u8, "fame", word)) {
+                fame = try int(i64, data[i + 1], 10);
+            } else if (eql(u8, "totalFame", word)) {
+                totalFame = try int(i64, data[i + 1], 10);
+            } else if (eql(u8, "credits", word)) {
+                credits = try int(i64, data[i + 1], 10);
+            } else if (eql(u8, "totalCredits", word)) {
+                totalCredits = try int(i64, data[i + 1], 10);
+            }
+        }
+
+        return AccountStruct{ .email = email, .name = name, .rank = rank, .guildId = guildId, .vaultCount = vaultcount, .maxCharSlots = maxCharSlot, .regTime = regTime, .fame = fame, .totalFame = fame, .credits = totalCredits };
+    }
 };
