@@ -38,11 +38,13 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
         log.err("regLockErr::{any}", .{err});
     };
 
-    const email_upper = std.ascii.upperString(try allocator.alloc(u8, credentials.email.len), credentials.email);
-    defer allocator.free(email_upper);
+    const email_buf = try allocator.alloc(u8, credentials.email.len);
+    defer allocator.free(email_buf);
+    const email_upper = std.ascii.upperString(email_buf, credentials.email);
 
-    const username_upper = std.ascii.upperString(try allocator.alloc(u8, credentials.username.len), credentials.username);
-    defer allocator.free(username_upper);
+    const username_buf = try allocator.alloc(u8, credentials.username.len);
+    defer allocator.free(username_buf);
+    const username_upper = std.ascii.upperString(username_buf, credentials.username);
 
     const email_exists = try api.client.send(i64, .{ "HEXISTS", "logins", email_upper });
     log.debug("Does email exist: {d}", .{email_exists});
@@ -58,8 +60,8 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
         return validators.APIError.NameTaken;
     }
 
-    const email_set_result = try api.client.send(i64, .{ "HSET", "logins", email_upper, "{}" });
-    log.debug("Did we set email: {d}", .{email_set_result});
+    //const email_set_result = try api.client.send(i64, .{ "HSET", "logins", email_upper, "{}" });
+    //log.debug("Did we set email: {d}", .{email_set_result});
 
     const name_set_result = try api.client.send(i64, .{ "HSET", "names", username_upper, email_upper });
     log.debug("Did we set username: {d}", .{name_set_result});
@@ -90,24 +92,34 @@ pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, cre
         "passResetToken", newAccount.passResetToken,
     };
 
-    const salt = try GenerateSalt(allocator);
+    const salt_buf: []u8 = try allocator.alloc(u8, 20);
+    defer allocator.free(salt_buf);
+    std.crypto.random.bytes(salt_buf);
+    const base64_len = GetLength(salt_buf.len);
+    const base64_buf: []u8 = try allocator.alloc(u8, base64_len);
+    defer allocator.free(base64_buf);
+
+    const salt = Base64Encode(salt_buf, base64_buf);
     const salted_pass = try std.fmt.allocPrint(allocator, "{s}{s}", .{ credentials.password, salt });
 
     var hash_buf: [sha512.digest_length]u8 = undefined;
     sha512.hash(salted_pass, &hash_buf, .{});
-    log.info("salt:{s} hash:{s}", .{ salt, hash_buf });
+    const hash_base64_len = GetLength(hash_buf.len);
+    const hash_base64_buf: []u8 = try allocator.alloc(u8, hash_base64_len);
+    const hash = Base64Encode(&hash_buf, hash_base64_buf);
+    defer allocator.free(hash_base64_buf);
 
-    //const login_info = LoginInfo{ .salt = salt, .hash = &hash_buf, .accountId = next_acc_id };
+    log.info("salt:{s} salted:{s}, hash:{s}", .{ salt, salted_pass, hash });
+
+    const login_info = LoginInfo{ .salt = salt, .hash = @constCast(hash), .accountId = next_acc_id };
     const account_result = try api.client.send(i64, command);
     log.debug("account result: {d}", .{account_result});
 
-    //var buf: [100]u8 = undefined;
-    //var fba = std.heap.FixedBufferAllocator.init(&buf);
-    //var string = std.ArrayList(u8).init(fba.allocator());
-    //try std.json.stringify(login_info, .{}, string.writer());
-    //log.debug("json items: '{s}'", .{string.items});
-    //const login_info_result = try api.client.send(i64, .{ "HSET", "logins", email_upper, string.items });
-    //log.debug("login info result: {d}", .{login_info_result});
+    var string = std.ArrayList(u8).init(allocator);
+    try std.json.stringify(login_info, .{}, string.writer());
+    log.debug("json item: '{s}'", .{string.items});
+    const login_info_result = try api.client.send(i64, .{ "HSET", "logins", email_upper, string.items });
+    log.debug("login info result: {d}", .{login_info_result});
 
     try response_helper.writeSuccess(response);
 }
@@ -135,11 +147,10 @@ const LoginInfo = struct {
     accountId: i64,
 };
 
-fn GenerateSalt(allocator: std.mem.Allocator) ![]const u8 {
-    const buf: []const u8 = try allocator.alloc(u8, 20);
-    defer allocator.free(buf);
-    const encoded_length = Base64Encoder.calcSize(buf.len);
-    const encoded_buf = try allocator.alloc(u8, encoded_length);
-    _ = Base64Encoder.encode(encoded_buf, buf);
-    return encoded_buf;
+fn GetLength(length: usize) usize {
+    return Base64Encoder.calcSize(length);
+}
+
+fn Base64Encode(buf: []const u8, out_buf: []u8) []const u8 {
+    return Base64Encoder.encode(out_buf, buf);
 }

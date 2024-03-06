@@ -8,5 +8,9 @@ const logger = @import("../log.zig");
 const log = logger.get(.acc_verify);
 
 const api = @import("../api.zig");
+const helper = @import("../utils/response_helper.zig");
 
-pub fn handle(_: *http.Server.Response, _: std.mem.Allocator, _: handler.Credentials) !void {}
+pub fn handle(response: *http.Server.Response, allocator: std.mem.Allocator, creds: handler.Credentials) !void {
+    log.debug("handle::{s}::{s}", .{ creds.email, creds.password });
+    try helper.writeError(response, "Not implemented", allocator);
+}
