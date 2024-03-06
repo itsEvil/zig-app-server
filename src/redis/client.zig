@@ -1,3 +1,5 @@
+///Modified version of 'okredis' library for zig without async code
+///https://github.com/kristoff-it/zig-okredis
 const std = @import("std");
 const net = std.net;
 const CommandSerializer = @import("serializer.zig").CommandSerializer;
