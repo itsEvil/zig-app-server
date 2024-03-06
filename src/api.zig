@@ -4,6 +4,7 @@ const redis = @import("redis/client.zig");
 const validators = @import("utils/validators.zig");
 const UUID = @import("utils/uuid.zig").UUID;
 const endpoint = @import("endpoints/handler.zig");
+const response_helper = @import("utils/response_helper.zig");
 const http = std.http;
 
 const redis_addr = "127.0.0.1";
@@ -15,11 +16,15 @@ const server_port = 8080;
 const log = logger.get(.api);
 
 pub var client: redis.Client = undefined;
+var uni_to_ascii: std.StringHashMap([]const u8) = undefined;
 
 pub fn init() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
+
+    try initStringHashMap(allocator);
+    defer uni_to_ascii.deinit();
 
     const redis_ip = try std.net.Address.parseIp4(redis_addr, redis_port);
     const redis_connection = std.net.tcpConnectToAddress(redis_ip) catch |err| {
@@ -82,8 +87,11 @@ fn handleRequest(response: *http.Server.Response, allocator: std.mem.Allocator) 
     log.info("{s} {s} {s}", .{ @tagName(response.request.method), @tagName(response.request.version), response.request.target });
 
     // Read the request body.
-    const body = try response.reader().readAllAlloc(allocator, 1024);
-    defer allocator.free(body);
+    const body_unparsed = try response.reader().readAllAlloc(allocator, 1024);
+    const body_buf = try allocator.alloc(u8, body_unparsed.len);
+    const body = try parseBodyToAscii(body_unparsed, body_buf);
+    defer allocator.free(body_unparsed);
+    defer allocator.free(body_buf);
 
     // Set "connection" header to "keep-alive" if present in request headers.
     if (response.request.headers.contains("connection")) {
@@ -94,20 +102,112 @@ fn handleRequest(response: *http.Server.Response, allocator: std.mem.Allocator) 
         try response.headers.append("content-type", "text/plain");
     }
 
-    // Check if the request target starts with "/get".
-    if (!try endpoint.parseEndpoint(response, allocator)) {
-        try sendErrorPage(response);
-    }
+    endpoint.parseEndpoint(response, allocator, body) catch |err| {
+        switch (err) {
+            validators.APIError.InvalidEmail => log.err("endpoint-err:{any}", .{err}),
+            validators.APIError.InvalidPassword => log.err("endpoint-err:{any}", .{err}),
+            validators.APIError.InvalidUsername => log.err("endpoint-err:{any}", .{err}),
+            validators.APIError.NameTaken => log.err("endpoint-err:{any}", .{err}),
+            validators.APIError.EmailTaken => log.err("endpoint-err:{any}", .{err}),
+            validators.APIError.FailedLock => log.err("endpoint-err:{any}", .{err}),
+            validators.APIError.FormTooLarge => log.err("endpoint-err:{any}", .{err}),
+            validators.APIError.MissingData => log.err("endpoint-err:{any}", .{err}),
+            else => { //missing endpoint
+                sendErrorPage(response, allocator) catch |internal_err| {
+                    return internal_err;
+                };
+            },
+        }
+    };
 
-    try response.finish();
+    if (response.state == .responded)
+        try response.finish();
 }
 
-fn sendErrorPage(response: *http.Server.Response) !void {
-    // Set "content-type" header to "text/plain".
-    response.transfer_encoding = .{ .content_length = 10 };
-    try response.headers.append("content-type", "text/plain");
-    try response.do();
+fn sendErrorPage(response: *http.Server.Response, allocator: std.mem.Allocator) !void {
+    if (response.state == .waited) //If waited then we need to send headers
+        try response.do();
+
     if (response.request.method != .HEAD) {
-        try response.writeAll("Not Found\n");
+        try response_helper.writeError(response, "Not found", allocator);
     }
+}
+
+pub fn parseBodyToAscii(body: []const u8, buf: []u8) ![]u8 {
+    log.debug("before-body:{s}", .{body});
+    var changed: usize = 0;
+    var skip: usize = 0;
+    var actual_index: usize = 0;
+    for (0.., body) |i, ch| {
+        actual_index = i - (changed * 2);
+        if (skip != 0) {
+            skip -= 1;
+            continue;
+        }
+
+        if (i + 1 >= body.len) {
+            buf[actual_index] = ch;
+            continue;
+        }
+
+        if (!std.mem.eql(u8, body[i .. i + 1], "%")) {
+            buf[actual_index] = ch;
+            continue;
+        }
+
+        if (i + 2 >= body.len) {
+            buf[actual_index] = ch;
+            continue;
+        }
+
+        const uni_ch = body[i .. i + 3];
+        if (uni_to_ascii.get(uni_ch)) |v| {
+            changed += 1;
+            for (0.., v) |c, parsed_ch| {
+                buf[actual_index + c] = parsed_ch;
+                skip = 2;
+            }
+        } else {
+            buf[actual_index] = ch;
+            log.err("Failed to find '{s}' in stringMap", .{uni_ch});
+        }
+    }
+    log.debug("after-body:{s} changed:{any}", .{ buf[0 .. actual_index + 1], changed });
+    return buf[0 .. actual_index + 1];
+}
+
+pub fn initStringHashMap(allocator: std.mem.Allocator) !void {
+    uni_to_ascii = std.StringHashMap([]const u8).init(allocator);
+    try uni_to_ascii.put("%21", "!");
+    try uni_to_ascii.put("%22", "\"");
+    try uni_to_ascii.put("%23", "#");
+    try uni_to_ascii.put("%24", "$");
+    try uni_to_ascii.put("%25", "%");
+    try uni_to_ascii.put("%26", "&");
+    try uni_to_ascii.put("%27", "'");
+    try uni_to_ascii.put("%28", "(");
+    try uni_to_ascii.put("%29", ")");
+    try uni_to_ascii.put("%30", "*");
+    try uni_to_ascii.put("%31", "+");
+    try uni_to_ascii.put("%32", ",");
+    try uni_to_ascii.put("%33", "-");
+    try uni_to_ascii.put("%34", ".");
+    try uni_to_ascii.put("%35", "/");
+    try uni_to_ascii.put("%3A", ":");
+    try uni_to_ascii.put("%3B", ";");
+    try uni_to_ascii.put("%3C", "<");
+    try uni_to_ascii.put("%3D", "=");
+    try uni_to_ascii.put("%3E", ">");
+    try uni_to_ascii.put("%3F", "?");
+    try uni_to_ascii.put("%40", "@");
+    try uni_to_ascii.put("%5B", "[");
+    try uni_to_ascii.put("%5C", "\\");
+    try uni_to_ascii.put("%5D", "]");
+    try uni_to_ascii.put("%5E", "^");
+    try uni_to_ascii.put("%5F", "_");
+    try uni_to_ascii.put("%60", "`");
+    try uni_to_ascii.put("%7B", "{");
+    try uni_to_ascii.put("%7C", "|");
+    try uni_to_ascii.put("%7D", "}");
+    try uni_to_ascii.put("%7E", "~");
 }

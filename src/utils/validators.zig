@@ -15,6 +15,7 @@ pub const APIError = error{
     MissingData,
     EmailTaken,
     NameTaken,
+    InvalidEndpoint,
 };
 
 pub fn checkSize(response: *Response, expected_size: u8) !void {
@@ -30,15 +31,35 @@ pub fn checkSize(response: *Response, expected_size: u8) !void {
     }
 }
 
+//god the body can be utf8 which makes this annoying
 ///Returns true if '@' symbol is before a '.' and theres at least 1 character between them
-pub fn isValidEmail(email: []const u8) bool {
+pub fn isValidEmail(email: []const u8) !bool {
     log.info("email-len:{any}", .{email.len});
     if (email.len < 5 or email.len > 64)
+        return false;
+
+    const atsAscii = std.mem.count(u8, email, "@");
+    if (atsAscii == 0) {
+        const atsUnicode = std.mem.count(u8, email, "%401");
+        if (atsUnicode == 0 or atsUnicode > 1)
+            return false;
+    }
+
+    if (atsAscii > 1)
+        return false;
+
+    const dots = std.mem.count(u8, email, ".");
+    if (dots == 0)
         return false;
 
     if (std.mem.indexOf(u8, email, "@")) |at_index| {
         if (std.mem.indexOf(u8, email, ".")) |dot_index| {
             if (at_index + 1 < dot_index)
+                return true;
+        }
+    } else if (std.mem.indexOf(u8, email, "%401")) |at_index| {
+        if (std.mem.indexOf(u8, email, ".")) |dot_index| {
+            if (at_index + 4 < dot_index)
                 return true;
         }
     }
