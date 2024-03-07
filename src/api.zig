@@ -6,14 +6,8 @@ const UUID = @import("utils/uuid.zig").UUID;
 const endpoint = @import("endpoints/handler.zig");
 const response_helper = @import("utils/response_helper.zig");
 const http = std.http;
-
-const redis_addr = "127.0.0.1";
-const redis_port = 6379;
-
-const server_addr = "127.0.0.1";
-const server_port = 8080;
-
 const log = logger.get(.api);
+const main = @import("main.zig");
 
 pub var client: redis.Client = undefined;
 var uni_to_ascii: std.StringHashMap([]const u8) = undefined;
@@ -26,7 +20,7 @@ pub fn init() !void {
     try initStringHashMap(allocator);
     defer uni_to_ascii.deinit();
 
-    const redis_ip = try std.net.Address.parseIp4(redis_addr, redis_port);
+    const redis_ip = try std.net.Address.parseIp4(main.redis_addr, main.redis_port);
     const redis_connection = std.net.tcpConnectToAddress(redis_ip) catch |err| {
         log.err("Failed to connect to redis service! {any}", .{err});
         return err;
@@ -38,8 +32,8 @@ pub fn init() !void {
     var server = http.Server.init(allocator, .{});
     defer server.deinit();
 
-    log.info("Listening at {s}:{d}", .{ server_addr, server_port });
-    const address = std.net.Address.parseIp4(server_addr, server_port) catch unreachable;
+    log.info("Listening at {s}:{d}", .{ main.server_addr, main.server_port });
+    const address = std.net.Address.parseIp4(main.server_addr, main.server_port) catch unreachable;
     try server.listen(address);
 
     runServer(&server, allocator) catch |err| {

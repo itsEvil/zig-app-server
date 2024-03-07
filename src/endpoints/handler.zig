@@ -144,12 +144,29 @@ pub const AccountStruct = struct {
     passResetToken: []const u8 = "",
 
     pub fn toXml(self: AccountStruct, acc_id: i64, allocator: std.mem.Allocator) ![]u8 {
-        const id_data = try xml.addXml("AccountId", "{d}", acc_id, allocator);
-        const name_data = try xml.addXml("Name", "{s}", self.name, allocator);
+        const id = try xml.addXml("AccountId", "{d}", acc_id, allocator);
+        const name = try xml.addXml("Name", "{s}", self.name, allocator);
+        const rank = try xml.addXml("Rank", "{d}", self.rank, allocator);
+        const vaultCount = try xml.addXml("VaultCount", "{d}", self.vaultCount, allocator);
+        const maxCharSlots = try xml.addXml("MaxCharSlots", "{d}", self.maxCharSlots, allocator);
+        const regTime = try xml.addXml("RegisterTime", "{d}", self.regTime, allocator);
+        const fame = try xml.addXml("Fame", "{d}", self.fame, allocator);
+        const total_fame = try xml.addXml("TotalFame", "{d}", self.totalFame, allocator);
+        const credits = try xml.addXml("Credits", "{d}", self.credits, allocator);
+        const total_credits = try xml.addXml("TotalCredits", "{d}", self.totalCredits, allocator);
 
-        defer allocator.free(id_data);
-        defer allocator.free(name_data);
-        return try std.fmt.allocPrint(allocator, "<Account>{s}{s}</Account>", .{ id_data, name_data }); //closing
+        defer allocator.free(id);
+        defer allocator.free(name);
+        defer allocator.free(rank);
+        defer allocator.free(vaultCount);
+        defer allocator.free(maxCharSlots);
+        defer allocator.free(regTime);
+        defer allocator.free(fame);
+        defer allocator.free(total_fame);
+        defer allocator.free(credits);
+        defer allocator.free(total_credits);
+
+        return try std.fmt.allocPrint(allocator, "<Account>{s}{s}{s}{s}{s}{s}{s}{s}{s}{s}</Account>", .{ id, name, rank, vaultCount, maxCharSlots, regTime, fame, total_fame, credits, total_credits }); //closing
     }
 
     pub fn parse(data: [][]const u8) !AccountStruct {
@@ -195,3 +212,41 @@ pub const AccountStruct = struct {
         return AccountStruct{ .email = email, .name = name, .rank = rank, .guildId = guildId, .vaultCount = vaultcount, .maxCharSlots = maxCharSlot, .regTime = regTime, .fame = fame, .totalFame = fame, .credits = totalCredits };
     }
 };
+
+test "account_to_xml" {
+    const acc_id = 1;
+    const allocator = std.testing.allocator;
+    const self = AccountStruct{ .email = "test@gmail.com", .name = "test_name" };
+    const id = try test_addXml("AccountId", "{d}", acc_id, allocator);
+    const name = try test_addXml("Name", "{s}", self.name, allocator);
+    const rank = try test_addXml("Rank", "{d}", self.rank, allocator);
+    const vaultCount = try test_addXml("VaultCount", "{d}", self.vaultCount, allocator);
+    const maxCharSlots = try test_addXml("MaxCharSlots", "{d}", self.maxCharSlots, allocator);
+    const regTime = try test_addXml("RegisterTime", "{d}", self.regTime, allocator);
+    const fame = try test_addXml("Fame", "{d}", self.fame, allocator);
+    const total_fame = try test_addXml("TotalFame", "{d}", self.totalFame, allocator);
+    const credits = try test_addXml("Credits", "{d}", self.credits, allocator);
+    const total_credits = try test_addXml("TotalCredits", "{d}", self.totalCredits, allocator);
+
+    defer allocator.free(id);
+    defer allocator.free(name);
+    defer allocator.free(rank);
+    defer allocator.free(vaultCount);
+    defer allocator.free(maxCharSlots);
+    defer allocator.free(regTime);
+    defer allocator.free(fame);
+    defer allocator.free(total_fame);
+    defer allocator.free(credits);
+    defer allocator.free(total_credits);
+
+    const ret = try std.fmt.allocPrint(allocator, "<Account>{s}{s}{s}{s}{s}{s}{s}{s}{s}{s}</Account>", .{ id, name, rank, vaultCount, maxCharSlots, regTime, fame, total_fame, credits, total_credits }); //closing
+    defer allocator.free(ret);
+    std.log.warn("XML:{s}", .{ret});
+
+    const expected: []const u8 = "<Account><AccountId>1</AccountId><Name>test_name</Name><Rank>0</Rank><VaultCount>2</VaultCount><MaxCharSlots>2</MaxCharSlots><RegisterTime>0</RegisterTime><Fame>0</Fame><TotalFame>0</TotalFame><Credits>0</Credits><TotalCredits>0</TotalCredits></Account>";
+    try std.testing.expectEqualStrings(expected, ret);
+}
+
+pub fn test_addXml(comptime tag: []const u8, comptime value_fmt: []const u8, value: anytype, allocator: std.mem.Allocator) ![]u8 {
+    return try std.fmt.allocPrint(allocator, "<{s}>" ++ value_fmt ++ "</{s}>", .{ tag, value, tag });
+}

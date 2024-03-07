@@ -1,29 +1,29 @@
 const std = @import("std");
+const main = @import("main.zig");
 const log = std.log;
 
-pub const std_options = .{
-    .log_level = .debug,
-    .logFn = myLogFn,
-};
-
 pub fn myLogFn(
-    comptime level: std.log.Level,
+    comptime level: log.Level,
     comptime scope: @TypeOf(.EnumLiteral),
     comptime format: []const u8,
     args: anytype,
 ) void {
+    if (@intFromEnum(level) < @intFromEnum(main.std_options.log_level))
+        return;
+
     const scope_prefix = @tagName(scope) ++ "::";
     const prefix = comptime level.asText() ++ "::" ++ scope_prefix;
-
     // Print the message to stderr, silently ignoring any errors
     std.debug.getStderrMutex().lock();
     defer std.debug.getStderrMutex().unlock();
     const stderr = std.io.getStdErr().writer();
-    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+    stderr.print(prefix ++ format ++ "\n", args) catch |err| {
+        std.debug.print("err:{any}", .{err});
+    };
 }
 
 pub fn get(comptime scope: @Type(.EnumLiteral)) type {
-    return std.log.scoped(scope);
+    return log.scoped(scope);
 }
 
 pub fn read() !void {

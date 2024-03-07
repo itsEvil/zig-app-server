@@ -1,7 +1,4 @@
 const std = @import("std");
-
-const log = std.log.scoped(.build);
-
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -29,6 +26,4 @@ pub fn build(b: *std.Build) !void {
     exe.step.dependOn(&install_assets_step.step);
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
-
-    log.debug("Finished build", .{});
 }
